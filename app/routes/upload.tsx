@@ -31,7 +31,7 @@ const Upload = () => {
         if(!imageFile.file) return setStatusText('Error: Failed to convert PDF to image.');
 
         setStatusText('Uploading image...');
-        const uploadedImage = fs.upload([imageFile.file]);
+        const uploadedImage = await fs.upload([imageFile.file]);
         if(!uploadedImage) return setStatusText('Error: Failed to upload image.');
 
         setStatusText('Preparing data...');
@@ -39,26 +39,34 @@ const Upload = () => {
         const data = {
             id: uuid,
             resumePath: uploadedFile.path,
-            image: imageFile.file,
+            imagePath: uploadedImage.path,
             companyName: companyName,
             feedback: '',
         }
-        await kv.set(`resume: ${uuid}`, JSON.stringify(data));
+        await kv.set(`resume:${uuid}`, JSON.stringify(data));
 
         setStatusText('Analyzing...');
 
-        const feedback = await ai.feedback(
-            uploadedFile.path,
-            prepareInstructions({ jobTitle, jobDescription })
-        );
-        if(!feedback) return setStatusText('Error: Failed to analyze resume');
+        try {
+            const feedback = await ai.feedback(
+                uploadedFile.path,
+                prepareInstructions({ jobTitle, jobDescription })
+            );
+            if(!feedback) return setStatusText('Error: Failed to analyze resume');
 
-        const feedbackText = typeof feedback.message.content === 'string' ? feedback.message.content : feedback.message.content[0].text;
-
-        data.feedback = JSON.parse(feedbackText);
-        await kv.set(`resume-${uuid}`, JSON.stringify(data));
-        setStatusText('Analysis complete, redirecting...');
-        console.log(data);
+            console.log(feedback);
+            const feedbackText = typeof feedback.message.content === 'string' ? feedback.message.content : feedback.message.content[0].text;
+            console.log(feedbackText);
+            data.feedback = JSON.parse(feedbackText);
+            await kv.set(`resume:${uuid}`, JSON.stringify(data));
+            setStatusText('Analysis complete, redirecting...');
+            console.log(data);
+            navigate(`/resume/${uuid}`);
+        } catch (error) {
+            console.error(error);
+            setStatusText('Error: Failed to analyze resume. Please try again later.');
+            setIsProcessing(false);
+        }
         navigate(`/resume/${uuid}`);
     }
     const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
